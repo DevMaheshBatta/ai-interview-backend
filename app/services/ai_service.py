@@ -1,10 +1,17 @@
-from google import genai
+import google.generativeai as genai
+import os
+import google.generativeai as genai
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 from app.config import settings
 import json
+model = genai.GenerativeModel("gemini-1.5-flash")
+response = model.generate_content(prompt)
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-MODEL_NAME = "models/gemini-2.5-flash"
+# MODEL_NAME = "models/gemini-2.5-flash"
 
 def ask_resume_question(resume_text: str, question: str):
 
@@ -21,7 +28,7 @@ def ask_resume_question(resume_text: str, question: str):
     """
 
     response = client.models.generate_content(
-        model=MODEL_NAME,
+        model=model,
         contents=prompt
     )
 
@@ -56,7 +63,7 @@ def evaluate_answer(question: str, user_answer: str):
     """
 
     response = client.models.generate_content(
-        model=MODEL_NAME,
+        model=model,
         contents=prompt
     )
 
@@ -90,7 +97,7 @@ def generate_weak_area_summary(weak_topics, average_score):
     """
 
     response = client.models.generate_content(
-        model=MODEL_NAME,
+        model=model,
         contents=prompt
     )
 
@@ -118,7 +125,7 @@ def analyze_resume(resume_text: str):
     """
 
     response = client.models.generate_content(
-        model=MODEL_NAME,
+        model=model,
         contents=prompt
     )
 

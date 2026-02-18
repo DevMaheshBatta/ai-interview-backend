@@ -56,6 +56,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 
 
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 app = FastAPI(title=settings.APP_NAME)
@@ -68,7 +69,7 @@ app.add_middleware(
 )
 
 
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):

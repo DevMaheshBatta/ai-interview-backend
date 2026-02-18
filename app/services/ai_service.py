@@ -1,38 +1,26 @@
-import google.generativeai as genai
 import os
 import google.generativeai as genai
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-from app.config import settings
-import json
-model = genai.GenerativeModel("gemini-1.5-flash")
-response = model.generate_content(prompt)
-
-client = genai.Client(api_key=settings.GEMINI_API_KEY)
-
-# MODEL_NAME = "models/gemini-2.5-flash"
-
-def ask_resume_question(resume_text: str, question: str):
+def ask_resume_question(question: str, resume_text: str):
 
     prompt = f"""
-    You are an AI Interview Copilot.
+    You are a technical interviewer.
 
-    Candidate Resume:
+    This is the candidate's resume:
     {resume_text}
 
-    Interview Question:
+    Ask or answer the following question professionally:
     {question}
-
-    Provide a professional, structured interview answer based on the resume.
     """
 
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt
-    )
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    response = model.generate_content(prompt)
 
     return response.text
+
 
 
 def evaluate_answer(question: str, user_answer: str):

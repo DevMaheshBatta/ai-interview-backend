@@ -1,26 +1,31 @@
-import os
-import google.generativeai as genai
+from google import genai
+from app.config import settings
+import json
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-def ask_resume_question(question: str, resume_text: str):
+MODEL_NAME = "models/gemini-2.5-flash"
+
+def ask_resume_question(resume_text: str, question: str):
 
     prompt = f"""
-    You are a technical interviewer.
+    You are an AI Interview Copilot.
 
-    This is the candidate's resume:
+    Candidate Resume:
     {resume_text}
 
-    Ask or answer the following question professionally:
+    Interview Question:
     {question}
+
+    Provide a professional, structured interview answer based on the resume.
     """
 
-    model = genai.GenerativeModel("gemini-1.5-flash")
-
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=prompt
+    )
 
     return response.text
-
 
 
 def evaluate_answer(question: str, user_answer: str):
@@ -51,7 +56,7 @@ def evaluate_answer(question: str, user_answer: str):
     """
 
     response = client.models.generate_content(
-        model=model,
+        model=MODEL_NAME,
         contents=prompt
     )
 
@@ -85,7 +90,7 @@ def generate_weak_area_summary(weak_topics, average_score):
     """
 
     response = client.models.generate_content(
-        model=model,
+        model=MODEL_NAME,
         contents=prompt
     )
 
@@ -113,7 +118,7 @@ def analyze_resume(resume_text: str):
     """
 
     response = client.models.generate_content(
-        model=model,
+        model=MODEL_NAME,
         contents=prompt
     )
 

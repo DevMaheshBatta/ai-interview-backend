@@ -51,6 +51,10 @@ from app.models.analysis import ResumeAnalysis
 from app.services.ai_service import generate_weak_area_summary
 from app.schemas.interview import DashboardResponse
 
+import os
+from sqlalchemy import create_engine
+
+# Get the URL and strip any accidental whitespace/newlines
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -70,7 +74,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+db_url = os.getenv("DATABASE_URL")
+if db_url:
+    db_url = db_url.strip()
 
+engine = create_engine(db_url)
 
 # Base.metadata.create_all(bind=engine)
 UPLOAD_DIR = "uploads"

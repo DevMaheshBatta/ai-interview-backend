@@ -62,7 +62,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 app = FastAPI(title=settings.APP_NAME)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://ai-interview-frontend-6ruv.vercel.app",
+    ],
 
     allow_credentials=True,
     allow_methods=["*"],

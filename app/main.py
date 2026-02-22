@@ -58,6 +58,7 @@ from sqlalchemy import create_engine
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.schemas.schemas import LoginRequest
 
 
 
@@ -135,20 +136,19 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @app.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    # Query raw User object from DB
-    db_user = db.query(User).filter(User.email == form_data.username).first()
+def login(data: LoginRequest, db: Session = Depends(get_db)):
 
-    if not db_user:
+    user = db.query(User).filter(User.email == data.email).first()
+
+    if not user:
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
-    # ✅ Access password column directly from SQLAlchemy object
-    if not verify_password(form_data.password, db_user.password):
+    if not verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
-    access_token = create_access_token(data={"sub": db_user.email})
+    token = create_access_token({"sub": str(user.id)})
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": token}
 
 
 

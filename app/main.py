@@ -61,7 +61,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.schemas.schemas import LoginRequest
 
 
-
+from fastapi import APIRouter, Depends
+from fastapi.security import OAuth2PasswordRequestForm
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 app = FastAPI(title=settings.APP_NAME)
@@ -116,6 +117,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     
     # Simple hash (temporary — we improve later)
     hashed_password = hash_password(user.password)
+    print("Password length:", len(user.password))
 
 
     db_user = User(

@@ -68,10 +68,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 app = FastAPI(title=settings.APP_NAME)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://ai-interview-frontend-6ruv.vercel.app",
-    ],
-
+    allow_origins=["*"],  # For now
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -118,13 +115,16 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     # Simple hash (temporary — we improve later)
     hashed_password = hash_password(user.password)
     print("Password length:", len(user.password))
-
+    print("TYPE:", type(user.password))
+    print("VALUE:", user.password)
+    print("LENGTH:", len(user.password))
 
     db_user = User(
         email=user.email,
         full_name=user.full_name,
         password=hashed_password
     )
+    
 
     db.add(db_user)
     db.commit()

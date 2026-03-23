@@ -109,26 +109,32 @@ def home():
     return {"message": "Backend Running with DB"}
 
 
+
+
 @app.post("/users")
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
-    hashed_password = hash_password(user.password)
+    try:
+        print("Incoming password:", user.password)
+        print("Length:", len(user.password))
 
-    new_user = User(
-        email=user.email,
-        full_name=user.full_name,
-        hashed_password=hashed_password
-    )
+        hashed_password = hash_password(user.password)
 
-    print("PASSWORD:", user.password)
-    print("TYPE:", type(user.password))
-    print("LEN:", len(user.password))
+        new_user = User(
+            email=user.email,
+            full_name=user.full_name,
+            hashed_password=hashed_password
+        )
 
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
 
-    return {"message": "User created"}
+        return {"message": "User created successfully"}
+
+    except Exception as e:
+        print("ERROR:", str(e))   # 🔥 THIS WILL SHOW REAL ERROR IN RENDER LOGS
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

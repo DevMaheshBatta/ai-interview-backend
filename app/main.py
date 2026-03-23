@@ -120,6 +120,10 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
         hashed_password=hashed_password
     )
 
+    print("PASSWORD:", user.password)
+    print("TYPE:", type(user.password))
+    print("LEN:", len(user.password))
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)

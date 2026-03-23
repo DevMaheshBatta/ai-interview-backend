@@ -109,29 +109,22 @@ def home():
     return {"message": "Backend Running with DB"}
 
 
-@app.post("/users", response_model=UserResponse)
+@app.post("/users")
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    
-    # Simple hash (temporary — we improve later)
-    hashed_password = hash_password(user.password)
-    print("Password length:", len(user.password))
-    print("TYPE:", type(user.password))
-    print("VALUE:", user.password)
-    print("LENGTH:", len(user.password))
 
-    db_user = User(
+    hashed_password = hash_password(user.password)
+
+    new_user = User(
         email=user.email,
         full_name=user.full_name,
-        password=hashed_password
+        hashed_password=hashed_password
     )
-    
 
-    db.add(db_user)
+    db.add(new_user)
     db.commit()
-    db.refresh(db_user)
+    db.refresh(new_user)
 
-    return db_user
-
+    return {"message": "User created"}
 
 
 

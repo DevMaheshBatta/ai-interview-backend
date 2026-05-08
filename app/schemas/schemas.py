@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel, EmailStr
 
 class UserCreate(BaseModel):
@@ -8,8 +7,7 @@ class UserCreate(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str    
-
+    password: str
 
 class UserResponse(BaseModel):
     id: int
@@ -18,4 +16,4 @@ class UserResponse(BaseModel):
 
     model_config = {
         "from_attributes": True
-    }    
+    }

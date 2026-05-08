@@ -35,7 +35,8 @@ from app.schemas.interview import (
     ResumeAnalysisResponse,
     DashboardResponse,
 )
-from app.schemas.schemas import LoginRequest
+from app.schemas.schemas import LoginRequest,UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse
 
 from app.security import hash_password, verify_password  # ✅ ONE import only
 from app.auth import create_access_token

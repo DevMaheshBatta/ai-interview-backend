@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from pypdf import PdfReader
@@ -40,7 +41,6 @@ from app.schemas.user import UserCreate, UserResponse
 
 from app.security import hash_password, verify_password  # ✅ ONE import only
 from app.auth import create_access_token
-
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -74,15 +74,18 @@ Base.metadata.create_all(bind=engine)
 # ---------------------------------------------------------------------------
 # 422 Error logger — shows exactly what field failed
 # ---------------------------------------------------------------------------
+
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(request, exc):
+
     body = await request.body()
-    logger.error("422 Validation Error  url=%s", request.url)
-    logger.error("  Raw body : %s", body.decode(errors="replace"))
-    logger.error("  Errors   : %s", exc.errors())
+
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors(), "body": body.decode(errors="replace")},
+        content={
+            "detail": str(exc),
+            "body": body.decode(errors="replace")
+        },
     )
 
 # ---------------------------------------------------------------------------
@@ -145,18 +148,29 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @app.post("/login")
-def login(data: LoginRequest, db: Session = Depends(get_db)):
-    """
-    Expects JSON:
-    { "email": "user@example.com", "password": "123456" }
-    """
-    user = db.query(User).filter(User.email == data.email).first()
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
 
-    if not user or not verify_password(data.password, user.password):  # ✅ user.password not user.hashed_password
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+    user = db.query(User).filter(
+        User.email == form_data.username
+    ).first()
 
-    token = create_access_token({"sub": user.email})  # ✅ sub = email (consistent with get_current_user)
-    return {"access_token": token, "token_type": "bearer"}
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email")
+
+    if user.password != form_data.password:
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+    token = create_access_token(
+        {"sub": user.email}
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer"
+    }
 
 
 @app.get("/me")

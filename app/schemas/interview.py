@@ -10,7 +10,7 @@ class InterviewHistoryResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 class EvaluateRequest(BaseModel):
     question: str
     user_answer: str
@@ -23,7 +23,7 @@ class EvaluateResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 from typing import List
 
 class ResumeAnalysisResponse(BaseModel):
@@ -34,7 +34,7 @@ class ResumeAnalysisResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 class DashboardResponse(BaseModel):
     average_score: float
     total_interviews: int
@@ -43,4 +43,4 @@ class DashboardResponse(BaseModel):
     recommendation: str | None
 
     class Config:
-        orm_mode = True
+        from_attributes = True

@@ -1,101 +1,111 @@
-from fastapi import FastAPI, Depends
+"""
+AI Interview Pilot — FastAPI Backend (Fixed)
+"""
+
+import os
+import uuid
+import logging
+
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, status, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
 from sqlalchemy.orm import Session
+from jose import JWTError, jwt
+from pypdf import PdfReader
+from typing import List
 
 from app.config import settings
-from app.db.database import Base, engine, get_db
+from app.db.database import Base, engine, get_db  # ✅ engine comes from database.py ONLY
+
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, UserLogin
-
-from app.security import hash_password, verify_password
-from fastapi import HTTPException
-
-from app.auth import create_access_token
-from app.core.security import hash_password
-from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
-
-from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
-from fastapi import UploadFile, File
-import shutil
-import os
 from app.models.resume import Resume
-import uuid
-from pypdf import PdfReader
-from app.services.ai_service import ask_resume_question
 from app.models.interview import InterviewHistory
-from app.schemas.interview import AskRequest
-from app.services.ai_service import ask_resume_question
-
-from typing import List
-from app.models.interview import InterviewHistory
-from app.schemas.interview import InterviewHistoryResponse
-from app.models.evaluation import Evaluation
-from app.schemas.interview import EvaluateRequest, EvaluateResponse
-from app.services.ai_service import evaluate_answer
-from app.models.evaluation import Evaluation
-from sqlalchemy import func
-from app.models.evaluation import Evaluation
-from app.services.ai_service import generate_weak_area_summary
-from app.schemas.interview import ResumeAnalysisResponse
-
-
-from app.services.ai_service import analyze_resume
-from app.models.resume import Resume
-
-from app.models.analysis import ResumeAnalysis
 from app.models.evaluation import Evaluation
 from app.models.analysis import ResumeAnalysis
-from app.services.ai_service import generate_weak_area_summary
-from app.schemas.interview import DashboardResponse
 
-import os
-from sqlalchemy import create_engine
-
-# Get the URL and strip any accidental whitespace/newlines
-
-from fastapi.middleware.cors import CORSMiddleware
-
+from app.schemas.user import UserCreate, UserResponse
+from app.schemas.interview import (
+    AskRequest,
+    InterviewHistoryResponse,
+    EvaluateRequest,
+    EvaluateResponse,
+    ResumeAnalysisResponse,
+    DashboardResponse,
+)
 from app.schemas.schemas import LoginRequest
 
+from app.security import hash_password, verify_password  # ✅ ONE import only
+from app.auth import create_access_token
 
-from fastapi import APIRouter, Depends
-from fastapi.security import OAuth2PasswordRequestForm
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
 app = FastAPI(title=settings.APP_NAME)
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For now
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-db_url = os.getenv("DATABASE_URL")
-if db_url:
-    db_url = db_url.strip()
 
-engine = create_engine(db_url)
+# ---------------------------------------------------------------------------
+# ✅ Create tables on startup (needed for Neon fresh DB)
+# ---------------------------------------------------------------------------
+Base.metadata.create_all(bind=engine)
 
-# Base.metadata.create_all(bind=engine)
+# ---------------------------------------------------------------------------
+# 422 Error logger — shows exactly what field failed
+# ---------------------------------------------------------------------------
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    logger.error("422 Validation Error  url=%s", request.url)
+    logger.error("  Raw body : %s", body.decode(errors="replace"))
+    logger.error("  Errors   : %s", exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": body.decode(errors="replace")},
+    )
+
+# ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(
-    token,
-    settings.SECRET_KEY,
-    algorithms=[settings.ALGORITHM]
-)
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email: str = payload.get("sub")
-        
+        if email is None:
+            raise credentials_exception
     except JWTError:
         raise credentials_exception
 
@@ -104,57 +114,48 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
 @app.get("/")
 def home():
-    return {"message": "Backend Running with DB"}
+    return {"message": "AI Interview Pilot API — Running ✅"}
 
 
+# ── Auth ──────────────────────────────────────────────────────────────────
 
-
-@app.post("/users")
+@app.post("/users", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == user.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-    try:
-        print("Incoming password:", user.password)
-        print("Length:", len(user.password))
-
-        hashed_password = hash_password(user.password)
-
-        new_user = User(
-            email=user.email,
-            full_name=user.full_name,
-            hashed_password=hashed_password
-        )
-
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-
-        return {"message": "User created successfully"}
-
-    except Exception as e:
-        print("ERROR:", str(e))   # 🔥 THIS WILL SHOW REAL ERROR IN RENDER LOGS
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
+    db_user = User(
+        email=user.email,
+        full_name=user.full_name,
+        password=hash_password(user.password),  # ✅ stores as "password" field
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
 
 
 @app.post("/login")
 def login(data: LoginRequest, db: Session = Depends(get_db)):
-
+    """
+    Expects JSON:
+    { "email": "user@example.com", "password": "123456" }
+    """
     user = db.query(User).filter(User.email == data.email).first()
 
-    if not user:
+    if not user or not verify_password(data.password, user.password):  # ✅ user.password not user.hashed_password
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
-    if not verify_password(data.password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
-
-    token = create_access_token({"sub": str(user.id)})
-
-    return {"access_token": token}
-
+    token = create_access_token({"sub": user.email})  # ✅ sub = email (consistent with get_current_user)
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @app.get("/me")
@@ -162,117 +163,89 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+# ── Resume ────────────────────────────────────────────────────────────────
 
 @app.post("/upload-resume")
 def upload_resume(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
 
     unique_filename = f"{uuid.uuid4()}_{file.filename}"
     file_location = os.path.join(UPLOAD_DIR, unique_filename)
 
-    # Save file
     with open(file_location, "wb") as buffer:
         buffer.write(file.file.read())
 
-    # 🔥 STEP 3 — Extract Text From PDF
     reader = PdfReader(file_location)
-    text = ""
+    text = "".join(
+        page.extract_text() + "\n" for page in reader.pages if page.extract_text()
+    )
 
-    for page in reader.pages:
-        extracted = page.extract_text()
-        if extracted:
-            text += extracted + "\n"
-
-    # Store in DB
     resume = Resume(
         file_name=unique_filename,
         file_path=file_location,
-        resume_text=text,  # 👈 STORE TEXT
-        user_id=current_user.id
+        resume_text=text,
+        user_id=current_user.id,
     )
-
     db.add(resume)
     db.commit()
     db.refresh(resume)
 
-    return {
-        "message": "Resume uploaded & parsed successfully",
-        "resume_id": resume.id
-    }
-
-
-
-
+    return {"message": "Resume uploaded & parsed successfully", "resume_id": resume.id}
 
 
 @app.get("/my-resumes")
 def get_my_resumes(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    resumes = db.query(Resume).filter(
-        Resume.user_id == current_user.id
-    ).all()
-
-    return resumes
+    return db.query(Resume).filter(Resume.user_id == current_user.id).all()
 
 
-
+# ── Interview ─────────────────────────────────────────────────────────────
 
 @app.post("/ask")
 def ask_interview_question(
     request: AskRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
+    from app.services.ai_service import ask_resume_question
 
-    # 1️⃣ Get latest resume of user
     resume = (
         db.query(Resume)
         .filter(Resume.user_id == current_user.id)
         .order_by(Resume.created_at.desc())
         .first()
     )
-
     if not resume:
         raise HTTPException(status_code=404, detail="No resume found. Upload resume first.")
-
     if not resume.resume_text:
         raise HTTPException(status_code=400, detail="Resume text not extracted.")
 
-    # 2️⃣ Call Gemini
     answer = ask_resume_question(resume.resume_text, request.question)
 
-    # 3️⃣ Save Interview History
     history = InterviewHistory(
-        question=request.question,
-        answer=answer,
-        user_id=current_user.id
+        question=request.question, answer=answer, user_id=current_user.id
     )
-
     db.add(history)
     db.commit()
     db.refresh(history)
 
-    # 4️⃣ Return Response
-    return {
-        "question": request.question,
-        "answer": answer,
-        "history_id": history.id
-    }
+    return {"question": request.question, "answer": answer, "history_id": history.id}
+
+
 @app.get("/history", response_model=List[InterviewHistoryResponse])
 def get_interview_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    limit: int = 10
+    limit: int = 10,
 ):
-    history = (
+    return (
         db.query(InterviewHistory)
         .filter(InterviewHistory.user_id == current_user.id)
         .order_by(InterviewHistory.created_at.desc())
@@ -280,13 +253,16 @@ def get_interview_history(
         .all()
     )
 
-    return history
+
+# ── Evaluation ────────────────────────────────────────────────────────────
+
 @app.post("/evaluate", response_model=EvaluateResponse)
 def evaluate_interview_answer(
     request: EvaluateRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
+    from app.services.ai_service import evaluate_answer
 
     result = evaluate_answer(request.question, request.user_answer)
 
@@ -296,58 +272,47 @@ def evaluate_interview_answer(
         score=result["score"],
         technical_feedback=result["technical_feedback"],
         improvements=result["improvements"],
-        user_id=current_user.id
+        user_id=current_user.id,
     )
-
     db.add(evaluation)
     db.commit()
     db.refresh(evaluation)
-
     return evaluation
+
+
 @app.get("/weak-areas")
 def get_weak_areas(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    evaluations = (
-        db.query(Evaluation)
-        .filter(Evaluation.user_id == current_user.id)
-        .all()
-    )
+    from app.services.ai_service import generate_weak_area_summary
 
+    evaluations = (
+        db.query(Evaluation).filter(Evaluation.user_id == current_user.id).all()
+    )
     if not evaluations:
         return {"message": "No evaluations found."}
 
-    total_score = 0
-    weak_topics = []
-
-    for eval in evaluations:
-        total_score += eval.score
-
-        if eval.score <= 6:
-            weak_topics.append(eval.question)
-
-    
-    average_score = round(total_score / len(evaluations), 2)
-
-    recommendation = None
-    if weak_topics:
-        recommendation = generate_weak_area_summary(weak_topics, average_score)
+    average_score = round(sum(e.score for e in evaluations) / len(evaluations), 2)
+    weak_topics = [e.question for e in evaluations if e.score <= 6]
+    recommendation = generate_weak_area_summary(weak_topics, average_score) if weak_topics else None
 
     return {
         "average_score": average_score,
         "weak_topics": weak_topics,
         "total_attempts": len(evaluations),
-        "recommendation": recommendation
+        "recommendation": recommendation,
     }
 
 
+# ── Resume Analysis ───────────────────────────────────────────────────────
 
 @app.post("/analyze-resume", response_model=ResumeAnalysisResponse)
 def analyze_user_resume(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
+    from app.services.ai_service import analyze_resume
 
     resume = (
         db.query(Resume)
@@ -355,9 +320,8 @@ def analyze_user_resume(
         .order_by(Resume.created_at.desc())
         .first()
     )
-
     if not resume:
-        return {"error": "No resume found"}
+        raise HTTPException(status_code=404, detail="No resume found")
 
     result = analyze_resume(resume.resume_text)
 
@@ -366,9 +330,8 @@ def analyze_user_resume(
         strengths=", ".join(result["strengths"]),
         missing_skills=", ".join(result["missing_skills"]),
         improvements=", ".join(result["improvements"]),
-        user_id=current_user.id
+        user_id=current_user.id,
     )
-
     db.add(analysis)
     db.commit()
     db.refresh(analysis)
@@ -378,39 +341,30 @@ def analyze_user_resume(
         "strengths": result["strengths"],
         "missing_skills": result["missing_skills"],
         "improvements": result["improvements"],
-        "created_at": analysis.created_at
+        "created_at": analysis.created_at,
     }
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────
+
 @app.get("/dashboard", response_model=DashboardResponse)
 def get_dashboard(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
+    from app.services.ai_service import generate_weak_area_summary
 
-    # --- Interview Data ---
     evaluations = (
-        db.query(Evaluation)
-        .filter(Evaluation.user_id == current_user.id)
-        .all()
+        db.query(Evaluation).filter(Evaluation.user_id == current_user.id).all()
     )
 
     if evaluations:
-        total_score = sum(e.score for e in evaluations)
-        average_score = round(total_score / len(evaluations), 2)
-
+        average_score = round(sum(e.score for e in evaluations) / len(evaluations), 2)
         weak_topics = [e.question for e in evaluations if e.score <= 6]
-
-        recommendation = None
-        if weak_topics:
-            recommendation = generate_weak_area_summary(
-                weak_topics,
-                average_score
-            )
+        recommendation = generate_weak_area_summary(weak_topics, average_score) if weak_topics else None
     else:
-        average_score = 0
-        weak_topics = []
-        recommendation = None
+        average_score, weak_topics, recommendation = 0, [], None
 
-    # --- ATS Data ---
     latest_analysis = (
         db.query(ResumeAnalysis)
         .filter(ResumeAnalysis.user_id == current_user.id)
@@ -418,12 +372,10 @@ def get_dashboard(
         .first()
     )
 
-    ats_score = latest_analysis.ats_score if latest_analysis else None
-
     return {
         "average_score": average_score,
         "total_interviews": len(evaluations),
         "weak_topics": weak_topics,
-        "ats_score": ats_score,
-        "recommendation": recommendation
+        "ats_score": latest_analysis.ats_score if latest_analysis else None,
+        "recommendation": recommendation,
     }

@@ -5,7 +5,7 @@ from app.config import settings
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 # ✅ use a model that actually exists
-MODEL_NAME = "gemini-1.5-flash-latest"  # or "gemini-2.0-flash"
+MODEL_NAME = "gemini-2.0-flash"  # or "gemini-2.0-flash"
 
 
 def ask_resume_question(resume_text: str, question: str) -> str:

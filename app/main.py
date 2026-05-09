@@ -102,27 +102,6 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    user = db.query(User).filter(User.email == email).first()
-    if user is None:
-        raise credentials_exception
-    return user
 
 
 # ---------------------------------------------------------------------------
@@ -159,20 +138,16 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-
-    user = db.query(User).filter(
-        User.email == form_data.username
-    ).first()
+    user = db.query(User).filter(User.email == form_data.username).first()
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email")
 
-    if user.password != form_data.password:
+    # ✅ Use verify_password instead of direct comparison
+    if not verify_password(form_data.password, user.password):
         raise HTTPException(status_code=401, detail="Invalid password")
 
-    access_token = create_access_token(
-        data={"sub": user.email}
-    )
+    access_token = create_access_token(data={"sub": user.email})
 
     return {
         "access_token": access_token,
